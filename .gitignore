@@ -3,5 +3,7 @@
 __pycache__/
 .ipynb_checkpoints/
 .env
+.vscode/
 *.csv
 *.parquet
+~$*

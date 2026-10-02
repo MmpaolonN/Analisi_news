@@ -3,7 +3,14 @@ name = "11-potfolio"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
+    "matplotlib>=3.11.2",
     "pandas>=3.0.6",
+    "plotly>=7.1.0",
+    "scikit-learn>=1.9.1",
+    "sentence-transformers>=6.1.0",
+    "sweetviz>=2.3.3",
+    "torch>=2.14.0",
+    "vadersentiment>=3.3.2",
 ]
 
 [dependency-groups]
@@ -11,3 +18,10 @@ dev = [
     "ipykernel>=7.3.0",
     "ruff>=0.16.9",
 ]
+
+[build-system]
+requires = ["uv_build>=0.12,<0.13"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "nome_progetto"
