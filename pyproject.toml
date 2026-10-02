@@ -1,6 +1,7 @@
 [project]
-name = "11-potfolio"
+name = "analisi-notizie-nyt"
 version = "0.1.0"
+description = "Classificazione dei topic e sentiment analysis di articoli del New York Times, con validazione tramite LLM."
 requires-python = ">=3.13"
 dependencies = [
     "matplotlib>=3.11.2",
@@ -24,4 +25,7 @@ requires = ["uv_build>=0.12,<0.13"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
-module-name = "nome_progetto"
+module-name = "analisi_notizie"
+
+[tool.ruff]
+line-length = 220  # righe lunghe permesse: il formatter uniforma spazi e virgolette senza spezzare le righe

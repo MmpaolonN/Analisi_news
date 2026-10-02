@@ -1,18 +1,21 @@
+"""Pulizia del dataset di notizie."""
+
+
 def clean_news(df, previous_columns_name, new_columns_name, column_no_missing, column_no_duplicates):
     """
-    Clean a news DataFrame: keep and rename the useful columns, then remove
-    rows with missing values and duplicates.
+    Pulisce un DataFrame di notizie: tiene e rinomina le colonne utili, poi
+    rimuove le righe con valori mancanti e i duplicati.
 
     Parameters:
-    df (pd.DataFrame): The DataFrame to be cleaned.
-    previous_columns_name (list): Current names of the columns to keep. All other columns are dropped.
-    new_columns_name (list): New names for the kept columns, in the same order as previous_columns_name.
-    column_no_missing (list): Columns (new names) that should not have missing values.
-    column_no_duplicates (list): Columns (new names) that should not have duplicate values.
+    df (pd.DataFrame): Il DataFrame da pulire.
+    previous_columns_name (list): Nomi attuali delle colonne da tenere. Tutte le altre vengono eliminate.
+    new_columns_name (list): Nuovi nomi delle colonne tenute, nello stesso ordine di previous_columns_name.
+    column_no_missing (list): Colonne (nuovi nomi) che non devono avere valori mancanti.
+    column_no_duplicates (list): Colonne (nuovi nomi) che non devono avere valori duplicati.
 
     Returns:
-    pd.DataFrame: The cleaned DataFrame.
-    dict: A report describing what was removed during the cleaning.
+    pd.DataFrame: Il DataFrame pulito.
+    dict: Un report di cosa è stato rimosso durante la pulizia.
     """
     if len(previous_columns_name) != len(new_columns_name):
         raise ValueError("previous_columns_name and new_columns_name must have the same length")
@@ -23,16 +26,16 @@ def clean_news(df, previous_columns_name, new_columns_name, column_no_missing, c
         "dropped_columns": [col for col in df.columns if col not in previous_columns_name],
     }
 
-    # keep only the useful columns and rename them
+    # tengo solo le colonne utili e le rinomino
     rename_dict = dict(zip(previous_columns_name, new_columns_name))
     df = df[previous_columns_name].rename(columns=rename_dict)
 
-    # remove rows with missing values
+    # rimuovo le righe con valori mancanti
     rows_before = len(df)
     df = df.dropna(subset=column_no_missing)
     report["rows_removed_missing"] = rows_before - len(df)
 
-    # remove duplicate rows
+    # rimuovo le righe duplicate
     rows_before = len(df)
     df = df.drop_duplicates(subset=column_no_duplicates)
     report["rows_removed_duplicates"] = rows_before - len(df)

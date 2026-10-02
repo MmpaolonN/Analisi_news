@@ -1,18 +1,20 @@
+"""Grafici: embedding in 3D, quota dei topic, sentiment per topic e confusion matrix della validazione con LLM."""
+
 import math
 
-import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
 import pandas as pd
 import plotly.graph_objects as go
 from matplotlib.ticker import MaxNLocator
 from sklearn.decomposition import PCA
+from sklearn.metrics import ConfusionMatrixDisplay
 
-from nome_progetto.config import IPCT_MEDIA_TOPIC
+from analisi_notizie.config import LLM_COMPARISONS
 
-SENTIMENT_COLORS = {"positive": "green", "negative": "red", "neutral": "white"}
+SENTIMENT_COLORS = {"negative": "red", "neutral": "white", "positive": "green"}  # ordine dal basso verso l'alto nelle aree
 
 
-def embeddin_to_3D(embeddings, labels = None):
+def embedding_to_3d(embeddings, labels=None):
     """Riduce gli embedding a 3 dimensioni con la PCA e li disegna nel browser come vettori che partono da 0, con l'etichetta sulla punta."""
     punti = PCA(n_components=3).fit_transform(embeddings)
     x, y, z = punti[:, 0], punti[:, 1], punti[:, 2]
@@ -29,23 +31,31 @@ def embeddin_to_3D(embeddings, labels = None):
 
 
 def topic_share(df, topic_col="pred_topic", date_col="date"):
-    """Grafico a linee 100% dei topic per anno (per mese se c'è un solo anno)."""
+    """Grafico ad aree impilate 100% dei topic per anno (per mese se c'è un solo anno)."""
     period = _period(df[date_col])
-    pd.crosstab(period, df[topic_col], normalize="index").mul(100).plot(stacked=True, colormap="tab20", ylabel="%").legend(bbox_to_anchor=(1, 1))
+    ax = pd.crosstab(period, df[topic_col], normalize="index").mul(100).plot.area(colormap="tab20", linewidth=0, ylabel="%", xlabel="")
+    for area in ax.collections:  # bordo nero sottile per separare i topic
+        area.set_edgecolor("black")
+        area.set_linewidth(0.5)
+    ax.set_ylim(0, 100)
+    handles, labels = ax.get_legend_handles_labels()
+    ax.legend(handles[::-1], labels[::-1], bbox_to_anchor=(1, 1))  # stesso ordine delle aree: in alto il topic in cima
 
 
 def sentiment_by_topic(df, sentiment_col="sentiment_label", topic_col="pred_topic", date_col="date", ncols=4):
-    """Un grafico a linee per topic: numero di articoli positivi, negativi e neutri per anno (per mese se c'è un solo anno)."""
+    """Un grafico ad aree impilate per topic: numero di articoli negativi, neutri e positivi per anno (per mese se c'è un solo anno)."""
     # tutti i periodi come righe, (topic, sentiment) come colonne: i periodi senza articoli valgono 0
     counts = pd.crosstab(_period(df[date_col]), [df[topic_col], df[sentiment_col]])
     topics = counts.columns.get_level_values(0).unique()
 
     nrows = math.ceil(len(topics) / ncols)
     fig, axes = plt.subplots(nrows, ncols, figsize=(4 * ncols, 3 * nrows), sharex=True, squeeze=False)
-    outline = [pe.Stroke(linewidth=3, foreground="black"), pe.Normal()]  # bordo nero, se no la linea bianca non si vede
     for ax, topic in zip(axes.flat, topics):
-        counts[topic].reindex(columns=list(SENTIMENT_COLORS), fill_value=0).plot(
-            ax=ax, color=SENTIMENT_COLORS, path_effects=outline, legend=False, title=topic, xlabel="", ylabel="n. articoli")
+        # aree impilate dal basso: rosso, bianco, verde
+        counts[topic].reindex(columns=list(SENTIMENT_COLORS), fill_value=0).plot.area(ax=ax, color=SENTIMENT_COLORS, linewidth=0, legend=False, title=topic, xlabel="", ylabel="n. articoli")
+        for area in ax.collections:  # bordo nero, se no l'area bianca non si vede
+            area.set_edgecolor("black")
+            area.set_linewidth(0.8)
         ax.yaxis.set_major_locator(MaxNLocator(integer=True))  # niente mezzi articoli sull'asse
     for i in range(len(topics), axes.size):  # riquadri avanzati: li nascondo e sposto le date sul grafico sopra
         axes.flat[i].set_visible(False)
@@ -53,6 +63,16 @@ def sentiment_by_topic(df, sentiment_col="sentiment_label", topic_col="pred_topi
 
     fig.legend(*axes.flat[0].get_legend_handles_labels(), loc="upper center", ncol=3)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
+
+
+def llm_confusion_matrices(df):
+    """Una confusion matrix per ogni metodo di LLM_COMPARISONS: righe = etichetta dell'LLM, colonne = predizione del metodo."""
+    val = df.dropna(subset=["llm_topic"])  # solo gli articoli etichettati
+    for name, ref_col, pred_col, labels in LLM_COMPARISONS:
+        size = max(4, len(labels) * 0.7)  # 13 topic: serve un grafico più grande
+        _, ax = plt.subplots(figsize=(size, size))
+        ConfusionMatrixDisplay.from_predictions(val[ref_col], val[pred_col], labels=labels, xticks_rotation=90, colorbar=False, ax=ax)
+        ax.set(title=name, xlabel="Predetto", ylabel="Riferimento (LLM)")
 
 
 def _period(dates):
