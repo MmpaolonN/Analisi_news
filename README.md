@@ -23,11 +23,50 @@ Per ogni articolo:
 | Validazione  | ==50== articoli a caso etichettati da un LLM con le stesse definizioni, poi confusion matrix e accuracy                            | `analisi.llm_prompt_files`, `load_llm_labels`, `llm_accuracy` |
 
 ### Dettagli tecnici
+- **Topic zero-shot**: le descrizioni dei topic sono scritte in inglese, come gli articoli, così testi e categorie stanno nello stesso spazio vettoriale. Le descrizioni sono parte del "modello": rendere più specifica quella di *Scienza e tecnologia* (prima includeva aziende tech e software) ha portato *Economia e lavoro* da 16 a 22 articoli corretti su 28.
 - **RoBERTa più veloce su CPU**: i chunk vengono ordinati per lunghezza prima di formare i batch, così il padding è minimo (stessi risultati, 1.4× più veloce); con `max_chunks=1` si usa solo il primo chunk di ogni articolo (2.1× più veloce, 93% delle etichette invariate).
 - **Validazione con LLM**: il prompt (in `config.py`) usa le stesse descrizioni dei topic degli embedding, e chiede un CSV separato da `;` con un ID per articolo, così le risposte si ricollegano alle righe giuste e vengono controllate (ID mancanti, etichette non valide).
 
 ## Risultati
 
+Accordo di ogni metodo con le etichette dell'LLM, su 49 articoli (uno dei 50 non è stato restituito dall'LLM):
+
+| Metodo | Accuracy vs LLM |
+|---|---|
+| Topic - embedding | **0.69** |
+| Sentiment - VADER | 0.31 |
+| Sentiment - RoBERTa | **0.61** |
+
+### Topic
+![Quota dei topic nel 1985](images/topic_share.png)
+
+| Prima (descrizione di *Scienza e tecnologia* generica) | Dopo (descrizione più specifica) |
+|---|---|
+| ![Confusion matrix topic, prima versione](images/confusion_topic_v1.png) | ![Confusion matrix topic, versione finale](images/confusion_topic_v2.png) |
+
+- Funziona bene sui temi più frequenti: *Economia e lavoro* (precision 0.92) e *Guerra, conflitti e terrorismo* (recall 1.00).
+- L'errore principale è *Politica* classificata come *Guerra, conflitti e terrorismo* (4 casi su 9): nel 1985 molti articoli politici parlano di politica estera, Guerra Fredda e conflitti.
+
+### Sentiment
+| VADER | RoBERTa |
+|---|---|
+| ![Confusion matrix VADER](images/confusion_sentiment_vader.png) | ![Confusion matrix RoBERTa](images/confusion_sentiment_roberta.png) |
+
+I due metodi sbagliano in direzioni opposte:
+
+- **VADER non assegna mai `neutral`** (4% degli articoli nel dataset): somma il peso emotivo di ogni parola e su testi di centinaia di parole il punteggio satura verso ±1. Quasi tutto diventa positivo (64%) o negativo (32%).
+- **RoBERTa mette quasi tutto in `neutral`** (86%): è addestrato su tweet e misura il tono di chi scrive, mentre gli articoli del NYT hanno un registro volutamente distaccato anche quando raccontano eventi negativi. Quando dice `negative` ha ragione (precision 1.00), ma ne trova solo un quarto (recall 0.25). Il comportamento non dipende dalla lunghezza: anche su titoli e singole frasi resta neutro nell'81–93% dei casi.
+
+Sentiment per topic nel tempo, con VADER e con RoBERTa:
+
+![Sentiment per topic con VADER](images/sentiment_vader_per_topic.png)
+![Sentiment per topic con RoBERTa](images/sentiment_roberta_per_topic.png)
+
+## Limiti
+- **L'LLM non è la verità**: le metriche misurano l'accordo con l'LLM, non l'accuratezza reale. Il prompt definisce il sentiment includendo gli eventi riportati, mentre RoBERTa misura solo il tono del linguaggio: parte del suo errore viene da questa differenza di definizione.
+- **Campione piccolo**: 49 articoli su 13 topic, alcuni topic hanno 0–1 esempi; le metriche per i topic rari sono solo indicative.
+- **Un solo anno** (1985): i grafici nel tempo sono mensili e la distribuzione dei topic riflette quel periodo storico.
+- **RoBERTa con `max_chunks=1`** guarda solo i primi ~380 vocaboli di ogni articolo.
 
 ## Struttura del progetto
 

@@ -1,5 +1,5 @@
 [project]
-name = "analisi-notizie-nyt"
+name = "analisi-notizie"
 version = "0.1.0"
 description = "Classificazione dei topic e sentiment analysis di articoli del New York Times, con validazione tramite LLM."
 requires-python = ">=3.13"
