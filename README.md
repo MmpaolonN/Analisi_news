@@ -1,14 +1,23 @@
 # Analisi di notizie del New York Times: topic e sentiment
 
-Progetto di NLP su un campione di ==***1000* articoli del New York Times del 1985**==. 
-**l'obiettivo è rispondere a queste domande**:
-- Con il passare degli anni si parla sempre delle stesse cose?
-- Come cambia il tono in base all’argomento?
+🎥 **Video di presentazione**: [YouTube](https://www.youtube.com/watch?v=72Z_guegKQA) · 🌐 [paonapolitano.it](https://paonapolitano.it)
 
-Per ogni articolo:
+Prendiamo decisioni in base alle informazioni che abbiamo, e i notiziari sono una delle fonti principali. Capire **di cosa parlano le news e con che tono** aiuta a leggerle in modo più consapevole.
+
+Questo progetto analizza **66.038 articoli del New York Times dal 1985 al 2018** (circa 2.000 per anno) per rispondere a due domande:
+- Con il passare degli anni si parla sempre delle stesse cose?
+- Come cambia il tono in base all'argomento?
+
+Il dataset non contiene nessun campo con l'argomento né con il tono, quindi per ogni articolo:
 1. **classifico il topic** in una delle 13 categorie *IPTC Media Topics*, senza addestrare nessun modello (classificazione *zero-shot* con gli embedding);
 2. **misuro il sentiment** con due metodi molto diversi, **VADER** (dizionario di parole) e **RoBERTa** (modello transformer);
-3. **valido i risultati** confrontandoli con le etichette assegnate da un LLM a ==50== articoli, con confusion matrix e accuracy.
+3. **valido i risultati** confrontandoli con le etichette assegnate da un LLM (Claude Opus) a **200 articoli** scelti a caso, con confusion matrix e accuracy.
+
+## Risultati in breve
+
+- **Gli argomenti cambiano**: *Economia e lavoro* passa da circa il 37% degli articoli (1985) al 19% (2018), mentre *Criminalità e giustizia* sale dal 9% al 19%. *Guerra, conflitti e terrorismo* ha picchi nel 2003 e nel 2014 (circa 25%).
+- **Il tono non cambia in modo evidente**: gli articoli negativi aumentano in alcuni topic, ma aumentano in proporzione al numero di articoli. Una differenza reale non si osserva.
+- **RoBERTa è più affidabile di VADER** per il sentiment (accuracy 0.59 contro 0.46 rispetto all'LLM).
 
 ## Pipeline
 
@@ -16,56 +25,101 @@ Per ogni articolo:
 | ------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | Esplorazione | Report interattivo con Sweetviz (colonne, valori mancanti, distribuzioni)                                                          | notebook, sezione 1                                           |
 | Pulizia      | Tengo e rinomino 5 colonne (autore, data, sezione, titolo, testo), rimuovo articoli senza testo e duplicati                        | `cleaning.clean_news`                                         |
-| Embedding    | Titolo + testo di ogni articolo  diventano vettori grazie a `all-MiniLM-L6-v2`                                                     | notebook, sezione 3                                           |
+| Embedding    | Titolo + testo di ogni articolo diventano vettori grazie a `all-MiniLM-L6-v2`                                                      | notebook, sezione 3                                           |
 | Topic        | Ogni articolo va al topic con la descrizione più simile (similarità coseno)                                                        | `analisi.classify`                                            |
 | Sentiment 1  | VADER: punteggio `compound` tra -1 e 1, soglie standard ±0.05                                                                      | `analisi.label_sentiment`                                     |
 | Sentiment 2  | RoBERTa (`cardiffnlp/twitter-roberta-base-sentiment-latest`): testo diviso in chunk da 510 token, probabilità mediate per articolo | `analisi.df_to_token`, `chunk_prediction`, `aggregate_chunks` |
-| Validazione  | ==50== articoli a caso etichettati da un LLM con le stesse definizioni, poi confusion matrix e accuracy                            | `analisi.llm_prompt_files`, `load_llm_labels`, `llm_accuracy` |
+| Validazione  | 200 articoli a caso etichettati da un LLM con le stesse definizioni, poi confusion matrix e accuracy                                | `analisi.llm_prompt_files`, `load_llm_labels`, `llm_accuracy` |
 
-### Dettagli tecnici
-- **Topic zero-shot**: le descrizioni dei topic sono scritte in inglese, come gli articoli, così testi e categorie stanno nello stesso spazio vettoriale. Le descrizioni sono parte del "modello": rendere più specifica quella di *Scienza e tecnologia* (prima includeva aziende tech e software) ha portato *Economia e lavoro* da 16 a 22 articoli corretti su 28.
-- **RoBERTa più veloce su CPU**: i chunk vengono ordinati per lunghezza prima di formare i batch, così il padding è minimo (stessi risultati, 1.4× più veloce); con `max_chunks=1` si usa solo il primo chunk di ogni articolo (2.1× più veloce, 93% delle etichette invariate).
-- **Validazione con LLM**: il prompt (in `config.py`) usa le stesse descrizioni dei topic degli embedding, e chiede un CSV separato da `;` con un ID per articolo, così le risposte si ricollegano alle righe giuste e vengono controllate (ID mancanti, etichette non valide).
+### Esplorazione e pulizia
+Il report Sweetviz ([`immagini/SWEETVIZ_REPORT.html`](immagini/SWEETVIZ_REPORT.html)) ha evidenziato colonne completamente vuote, articoli senza testo e duplicati:
 
-## Risultati
-
-Accordo di ogni metodo con le etichette dell'LLM, su 49 articoli (uno dei 50 non è stato restituito dall'LLM):
-
-| Metodo | Accuracy vs LLM |
+| | Righe |
 |---|---|
-| Topic - embedding | **0.69** |
-| Sentiment - VADER | 0.31 |
-| Sentiment - RoBERTa | **0.61** |
+| Articoli iniziali | 66.038 |
+| Senza titolo o testo | −1.828 |
+| Duplicati | −599 |
+| **Articoli analizzati** | **63.611** |
 
-### Topic
-![Quota dei topic nel 1985](images/topic_share.png)
+### Come funziona la classificazione con gli embedding
+Un embedding trasforma un testo in un vettore in uno spazio a molte dimensioni: **testi che parlano dello stesso argomento finiscono vicini**, testi su argomenti diversi finiscono lontani. Per esempio, i vettori di *Guerra e conflitti* e *Disastri e incidenti* sono vicini (si parla in entrambi di morti e distruzione), mentre *Sport* è lontano.
 
-| Prima (descrizione di *Scienza e tecnologia* generica) | Dopo (descrizione più specifica) |
+Trasformo in vettori sia gli articoli sia una breve descrizione di ciascun topic (in inglese, come gli articoli), e assegno ogni articolo al topic più vicino. Il limite di questo approccio è che alcune categorie sono vicine tra loro, e gli articoli "a metà strada" possono finire nella categoria sbagliata.
+
+## Topic nel tempo
+
+![Quota dei topic nel tempo](immagini/Topic_nel_tempo.png)
+
+| Topic | 1985 | 2018 | Note |
+|---|---|---|---|
+| Economia e lavoro | 37% | 19% | minimo nel 2014 (13%) |
+| Criminalità e giustizia | 9% | 19% | crescita costante dal 2002 |
+| Guerra, conflitti e terrorismo | 17% | 14% | picchi nel 2003 (25%) e 2014 (26%) |
+| Stile di vita | 2.5% | 7% | |
+| Scienza e tecnologia | 5% | 3.6% | picco nel 2001 (9%), circa 2% nel 2008–2014 |
+
+Gli altri topic restano abbastanza stabili.
+
+## Sentiment
+
+### VADER: quasi niente è neutro
+VADER assegna a ogni parola un punteggio (es. *beautiful* positivo, *terrible* negativo) e li somma. Il risultato sul dataset: **64% positivi, 35% negativi, solo 2% neutri**, l'opposto di quello che ci si aspetta da articoli giornalistici, scritti con un linguaggio volutamente neutro.
+
+I motivi:
+- **Lunghezza dei testi**: VADER è pensato per testi brevi come i tweet. In un articolo di migliaia di parole il punteggio si accumula e satura verso ±1, quindi la fascia "neutra" (tra −0.05 e +0.05) viene superata quasi sempre.
+- **Contesto**: alcune parole hanno una connotazione diversa a seconda del contesto (es. *budget* sui social può essere negativo, in un articolo finanziario è neutro).
+
+### RoBERTa: risultati più realistici
+Il modello transformer dà **78% neutri, 16% negativi, 5% positivi**, molto più vicino a quello che ci aspettiamo.
+
+![Sentiment per topic con RoBERTa](immagini/sentiment_roBERTa.png)
+
+Per confronto, lo stesso grafico con VADER: [`immagini/sentiment_VADER.png`](immagini/sentiment_VADER.png).
+
+**Conclusione**: in alcuni topic (es. *Criminalità e giustizia*, *Guerra*) gli articoli negativi aumentano, ma aumentano in proporzione al numero totale di articoli. Una variazione reale del tono nel tempo non si osserva.
+
+### Il problema computazionale
+Con RoBERTa il mio PC ha impiegato **circa 40 minuti per 1.000 articoli**: per 63.000 articoli sarebbero servite quasi due giornate. Le ottimizzazioni:
+1. **Un solo chunk per articolo** (`max_chunks=1`): si analizzano solo i primi ~510 token (circa 380 parole). 2.1× più veloce, con il 93% delle etichette invariate (verificato sul campione di prova).
+2. **Chunk ordinati per lunghezza** prima di formare i batch: i testi corti vengono processati insieme e il padding è minimo. Stessi risultati, 1.4× più veloce.
+3. **GPU**: due righe di codice per spostare modello e tensori su GPU (`.to(device)`), poi esecuzione su **Google Colab**.
+
+Risultato: **circa 30 minuti per l'intero dataset**, meno di quanto il PC impiegava per 1.000 articoli.
+
+## Validazione con un LLM
+
+Non esiste un'etichetta "vera" per questi articoli, quindi ho estratto 200 articoli a caso e li ho fatti classificare a **Claude Opus** (topic e sentiment, con le stesse definizioni usate dagli altri metodi).
+
+| Metodo | Accuracy vs LLM (200 articoli) |
 |---|---|
-| ![Confusion matrix topic, prima versione](images/confusion_topic_v1.png) | ![Confusion matrix topic, versione finale](images/confusion_topic_v2.png) |
+| Topic - embedding | 0.54 |
+| Sentiment - VADER | 0.46 |
+| Sentiment - RoBERTa | **0.59** |
 
-- Funziona bene sui temi più frequenti: *Economia e lavoro* (precision 0.92) e *Guerra, conflitti e terrorismo* (recall 1.00).
-- L'errore principale è *Politica* classificata come *Guerra, conflitti e terrorismo* (4 casi su 9): nel 1985 molti articoli politici parlano di politica estera, Guerra Fredda e conflitti.
+### Topic: l'errore di *Scienza e tecnologia*
+In una prima versione molti articoli di **economia** venivano classificati come **Scienza e tecnologia**. Leggendo a mano gli articoli sbagliati ho visto che erano notizie su aziende tecnologiche (licenziamenti, bilanci...) in cui comparivano parole come *computer*, *telefono*, *elettronica*: le stesse che avevo usato nella descrizione del topic.
+
+Ho riscritto la descrizione di *Scienza e tecnologia* concentrandola su **scoperte ed esperimenti scientifici**: il vettore del topic si è spostato e quell'errore è praticamente scomparso (ora solo 3 articoli di economia su 84 finiscono in *Scienza e tecnologia*). Le descrizioni dei topic sono, di fatto, parte del modello.
+
+![Confusion matrix topic](immagini/Topic_confusionMat.png)
+
+- Funziona bene su *Economia e lavoro* (precision 0.93), *Guerra, conflitti e terrorismo* (recall 0.94) e *Disastri e incidenti* (recall 1.00).
+- **L'errore principale ora è *Politica* classificata come *Guerra, conflitti e terrorismo*** (16 casi su 38, recall di *Politica* 0.21): molti articoli politici parlano di politica estera e conflitti, e i due topic sono vicini nello spazio degli embedding.
 
 ### Sentiment
+
 | VADER | RoBERTa |
 |---|---|
-| ![Confusion matrix VADER](images/confusion_sentiment_vader.png) | ![Confusion matrix RoBERTa](images/confusion_sentiment_roberta.png) |
+| ![Confusion matrix VADER](immagini/Sentiment_confusionmat.png) | ![Confusion matrix RoBERTa](immagini/Sentiment_confusionmat2.png) |
 
 I due metodi sbagliano in direzioni opposte:
-
-- **VADER non assegna mai `neutral`** (4% degli articoli nel dataset): somma il peso emotivo di ogni parola e su testi di centinaia di parole il punteggio satura verso ±1. Quasi tutto diventa positivo (64%) o negativo (32%).
-- **RoBERTa mette quasi tutto in `neutral`** (86%): è addestrato su tweet e misura il tono di chi scrive, mentre gli articoli del NYT hanno un registro volutamente distaccato anche quando raccontano eventi negativi. Quando dice `negative` ha ragione (precision 1.00), ma ne trova solo un quarto (recall 0.25). Il comportamento non dipende dalla lunghezza: anche su titoli e singole frasi resta neutro nell'81–93% dei casi.
-
-Sentiment per topic nel tempo, con VADER e con RoBERTa:
-
-![Sentiment per topic con VADER](images/sentiment_vader_per_topic.png)
-![Sentiment per topic con RoBERTa](images/sentiment_roberta_per_topic.png)
+- **VADER** quasi non assegna mai `neutral` (recall 0.04): 61 articoli neutri su 79 diventano positivi.
+- **RoBERTa** tende verso `neutral`: quando dice `negative` ha quasi sempre ragione (precision 0.87), ma ne trova meno della metà (recall 0.44). È addestrato su tweet e misura il tono di chi scrive, mentre gli articoli del NYT mantengono un registro distaccato anche quando raccontano eventi negativi.
 
 ## Limiti
 - **L'LLM non è la verità**: le metriche misurano l'accordo con l'LLM, non l'accuratezza reale. Il prompt definisce il sentiment includendo gli eventi riportati, mentre RoBERTa misura solo il tono del linguaggio: parte del suo errore viene da questa differenza di definizione.
-- **Campione piccolo**: 49 articoli su 13 topic, alcuni topic hanno 0–1 esempi; le metriche per i topic rari sono solo indicative.
-- **Un solo anno** (1985): i grafici nel tempo sono mensili e la distribuzione dei topic riflette quel periodo storico.
+- **Campione di validazione piccolo**: 200 articoli su 13 topic, alcuni topic hanno 1–3 esempi; le metriche per i topic rari sono solo indicative.
+- **Campione del dataset**: circa 2.000 articoli per anno (meno nel 2000 e 2001), non l'intero archivio del NYT.
 - **RoBERTa con `max_chunks=1`** guarda solo i primi ~380 vocaboli di ogni articolo.
 
 ## Struttura del progetto
@@ -80,7 +134,7 @@ Sentiment per topic nel tempo, con VADER e con RoBERTa:
 │   └── graphs.py                   ← grafici
 ├── scripts/
 │   └── merge_full_text_csv.py      ← unisce i CSV originali del NYT (uno per anno) in un unico file
-├── images/                         ← grafici usati in questo README
+├── immagini/                       ← grafici e report Sweetviz usati in questo README
 ├── .data/                          ← dati (non su Git)
 ├── pyproject.toml                  ← dipendenze
 └── uv.lock                         ← versioni esatte
@@ -94,10 +148,10 @@ Serve [uv](https://docs.astral.sh/uv/) e Python 3.13.
 uv sync                                   # crea .venv e installa dipendenze e pacchetto
 ```
 
-1. Metti il dataset in `.data/NYT_sample.csv` (colonne usate: `writer_name`, `pub_date`, `section_name`, `main_headline`, `body_text`).
+1. Metti il dataset in `.data/NYT_news.csv` (colonne usate: `writer_name`, `pub_date`, `section_name`, `main_headline`, `body_text`).
 2. Apri `notebooks/analisi_notizie_nyt.ipynb` in VS Code e seleziona il kernel di `.venv`.
-3. Esegui le celle in ordine. La cella di RoBERTa richiede circa 20 minuti su CPU.
-4. Per la validazione: la cella della sezione 7 crea `.data/llm_prompt_1.txt` e `llm_prompt_2.txt`; incolla ciascuno in un LLM e salva le risposte in `.data/llm_labels.csv` (istruzioni nel notebook).
+3. Esegui le celle in ordine. La cella di RoBERTa è la più pesante: su CPU servono circa 40 minuti ogni 1.000 articoli, quindi per il dataset completo conviene una GPU (es. Google Colab). Il codice usa la GPU in automatico se disponibile.
+4. Per la validazione: la cella della sezione 7 crea `.data/llm_prompt_1.txt` … `llm_prompt_8.txt` (25 articoli ciascuno); incolla ciascuno in un LLM e salva le risposte in `.data/llm_labels.csv` (istruzioni nel notebook).
 
 ## Tecnologie
-Python 3.13 · pandas · scikit-learn · sentence-transformers · transformers / PyTorch · vaderSentiment · matplotlib · plotly · Sweetviz · uv · ruff
+Python 3.13 · pandas · scikit-learn · sentence-transformers · transformers / PyTorch · vaderSentiment · matplotlib · plotly · Sweetviz · uv · ruff · Google Colab

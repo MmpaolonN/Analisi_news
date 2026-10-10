@@ -5,7 +5,7 @@ from pathlib import Path
 # percorsi
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / ".data"
-DATASET_DIR = DATA_DIR / "NYT_sample.csv"  # percorso del file csv, non di una cartella
+DATASET_DIR = DATA_DIR / "NYT_news.csv"  # percorso del file csv, non di una cartella
 
 # modello di sentiment (RoBERTa)
 SENTIMENT_MODEL = "cardiffnlp/twitter-roberta-base-sentiment-latest"

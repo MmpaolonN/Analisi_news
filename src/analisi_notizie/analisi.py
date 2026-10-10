@@ -83,10 +83,11 @@ def load_sentiment_model():
 
     Returns:
     AutoTokenizer: Il tokenizer di SENTIMENT_MODEL.
-    AutoModelForSequenceClassification: Il modello, in modalità predizione.
+    AutoModelForSequenceClassification: Il modello, in modalità predizione, su GPU se disponibile.
     """
     tokenizer = AutoTokenizer.from_pretrained(SENTIMENT_MODEL)
-    model = AutoModelForSequenceClassification.from_pretrained(SENTIMENT_MODEL).eval()
+    device = "cuda" if torch.cuda.is_available() else "cpu"  # GPU se c'è (es. Colab), altrimenti CPU
+    model = AutoModelForSequenceClassification.from_pretrained(SENTIMENT_MODEL).eval().to(device)
     return tokenizer, model
 
 
@@ -130,6 +131,7 @@ def chunk_prediction(records):
         batch = records[i : i + BATCH_SIZE]
         inputs = [[tokenizer.cls_token_id] + tok + [tokenizer.sep_token_id] for _, tok in batch]  # aggiungo <s> e </s>
         encoded = tokenizer.pad({"input_ids": inputs}, return_tensors="pt")  # stessa lunghezza + attention_mask
+        encoded = encoded.to(model.device)  # i tensori devono stare sullo stesso device del modello
         probs = torch.softmax(model(**encoded).logits, dim=-1)
         results += [(row_id, len(tok), p.tolist()) for (row_id, tok), p in zip(batch, probs)]
     return results
@@ -161,7 +163,7 @@ def aggregate_chunks(df, predictions):
 # --- Validazione con LLM ---
 
 
-def llm_prompt_files(df, out_dir, n=50, size=25, seed=42):
+def llm_prompt_files(df, out_dir, n=200, size=25, seed=42):
     """
     Estrae n articoli a caso e li scrive, con LLM_PROMPT in testa, in file da `size` articoli da incollare nella chat dell'LLM.
 
